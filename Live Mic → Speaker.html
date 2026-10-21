@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Live Mic → Speaker</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--text:#1d1d1b;--muted:#6b6a64;--accent:#d9482b;--accent-2:#1f7a4d;--line:#e3e1d8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151513;--card:#201f1c;--text:#f1efe8;--muted:#9c9a90;--accent:#ff6a4a;--accent-2:#4cc88a;--line:#34322d;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#151513;--card:#201f1c;--text:#f1efe8;--muted:#9c9a90;--accent:#ff6a4a;--accent-2:#4cc88a;--line:#34322d;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100%;display:flex;justify-content:center}
+main{width:100%;max-width:460px;padding:20px 16px 32px}
+h1{font-size:1.35rem;margin:8px 0 4px}
+p.sub{margin:0 0 14px;color:var(--muted);font-size:.92rem;line-height:1.4}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tabs button{flex:1;padding:10px 4px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:.9rem;cursor:pointer}
+.tabs button.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+.btn{width:100%;border:0;border-radius:14px;padding:16px;font-size:1.05rem;font-weight:700;color:#fff;background:var(--accent-2);cursor:pointer;margin-top:8px}
+.btn.live{background:var(--accent)}
+.btn.alt{background:var(--text);color:var(--bg)}
+#status{margin:10px 0 0;text-align:center;color:var(--muted);font-size:.9rem;min-height:1.2em}
+label{display:flex;justify-content:space-between;font-size:.9rem;margin-bottom:6px}
+label span:last-child{color:var(--muted)}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0 0 14px}
+.meter{height:10px;border-radius:6px;background:var(--line);overflow:hidden}
+#bar{height:100%;width:0;background:var(--accent-2);transition:width .06s}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:.9rem;margin-bottom:12px}
+.row:last-child{margin-bottom:0}
+select{max-width:60%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px}
+textarea{width:100%;height:70px;margin:6px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font:.75rem monospace;resize:none}
+.step{font-size:.85rem;color:var(--muted);margin:10px 0 0}
+.warn{font-size:.82rem;line-height:1.45;color:var(--muted)}
+.warn b{color:var(--text)}
+#mute,#talk{width:100%;margin-top:10px;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:1rem;cursor:pointer;display:none;touch-action:none;user-select:none;-webkit-user-select:none}
+#talk.down{background:var(--accent);color:#fff;border-color:var(--accent)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>Live Mic → Speaker</h1>
+  <p class="sub">Turn a phone or laptop mic into a live PA through any speaker.</p>
+
+  <div class="tabs">
+    <button data-m="local" class="on">This device</button>
+    <button data-m="send">Send mic</button>
+    <button data-m="recv">Receive</button>
+  </div>
+
+  <div id="p-local">
+    <button id="big" class="btn">Start</button>
+  </div>
+
+  <div id="p-send" class="hide card">
+    <b>Use on the device with the mic (e.g. laptop)</b>
+    <button id="mkOffer" class="btn">1. Start mic &amp; make code</button>
+    <p class="step">2. Copy this code to the speaker device:</p>
+    <textarea id="offer" readonly placeholder="Code appears here"></textarea>
+    <button class="btn alt" data-copy="offer">Copy code</button>
+    <p class="step">3. Paste the reply code from the speaker device:</p>
+    <textarea id="ansIn" placeholder="Paste reply code"></textarea>
+    <button id="fin" class="btn">4. Connect</button>
+  </div>
+
+  <div id="p-recv" class="hide card">
+    <b>Use on the device with the Bluetooth speaker (e.g. phone)</b>
+    <p class="step">1. Paste the code from the mic device:</p>
+    <textarea id="offIn" placeholder="Paste code"></textarea>
+    <button id="mkAns" class="btn">2. Connect &amp; play</button>
+    <p class="step">3. Copy this reply code back to the mic device:</p>
+    <textarea id="answer" readonly placeholder="Reply code appears here"></textarea>
+    <button class="btn alt" data-copy="answer">Copy reply code</button>
+  </div>
+
+  <button id="talk">Hold to talk</button>
+  <button id="mute">Mute mic</button>
+  <p id="status"></p>
+
+  <div class="card" id="c-meter" style="margin-top:14px">
+    <label>Mic level <span id="lvl">–</span></label>
+    <div class="meter"><div id="bar"></div></div>
+  </div>
+
+  <div class="card">
+    <label>Volume <span id="vv">100%</span></label>
+    <input id="vol" type="range" min="0" max="200" value="100">
+    <div class="row"><span>Voice effect</span>
+      <select id="fx">
+        <option value="none">Normal</option>
+        <option value="echo">Echo</option>
+        <option value="robot">Robot</option>
+        <option value="deep">Deep voice</option>
+        <option value="high">Chipmunk</option>
+      </select></div>
+    <div class="row"><span>Push-to-talk</span><input id="ptt" type="checkbox"></div>
+    <div class="row"><span>Echo cancel</span><input id="ec" type="checkbox" checked></div>
+    <div class="row"><span>Noise suppression</span><input id="ns" type="checkbox" checked></div>
+    <div class="row"><span>Auto gain</span><input id="ag" type="checkbox"></div>
+    <div class="row hide" id="outrow"><span>Output</span><select id="out"></select></div>
+  </div>
+
+  <div class="card warn">
+    <b>Avoid the howl:</b> if the speaker is near the mic, it will feed back. Keep volume low or stay away from the speaker.<br><br>
+    <b>Lag:</b> Bluetooth adds roughly 0.1–0.3 s of delay. That’s normal.<br><br>
+    <b>Send/Receive:</b> works best when both devices are on the same Wi‑Fi. Effects and push-to-talk apply on the mic device.
+  </div>
+  <audio id="rem" autoplay playsinline></audio>
+</main>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id);};
+  var ctx,stream,src,fxIn,fxOut,gate,gain,analyser,fxNodes=[],live=false,muted=false,talking=false,
+      mode='local',pc=null,sinkEl=null,raf=0;
+
+  function say(t){$('status').textContent=t||'';}
+  function secure(){return navigator.mediaDevices&&navigator.mediaDevices.getUserMedia;}
+
+  // ---------- pitch shifter (delay-line, two crossfaded taps) ----------
+  function pitch(ratio){
+    var W=2048,M=8191,buf=new Float32Array(8192),w=0,ph=0;
+    var sp=ctx.createScriptProcessor(1024,1,1);
+    function rd(p){var pos=w-p*W,i=Math.floor(pos),f=pos-i;
+      return buf[i&M]*(1-f)+buf[(i+1)&M]*f;}
+    function win(p){var s=Math.sin(Math.PI*p);return s*s;}
+    sp.onaudioprocess=function(e){
+      var inp=e.inputBuffer.getChannelData(0),out=e.outputBuffer.getChannelData(0);
+      for(var n=0;n<inp.length;n++){
+        buf[w]=inp[n];
+        var p2=(ph+.5)%1;
+        out[n]=rd(ph)*win(ph)+rd(p2)*win(p2);
+        ph+=(1-ratio)/W; if(ph>=1)ph-=1; if(ph<0)ph+=1;
+        w=(w+1)&M;
+      }
+    };
+    return sp;
+  }
+
+  // ---------- voice effects ----------
+  function setFx(){
+    if(!fxIn)return;
+    fxNodes.forEach(function(n){try{n.disconnect();if(n.stop)n.stop();}catch(e){}});
+    fxNodes=[]; fxIn.disconnect();
+    var f=$('fx').value;
+    function mk(n){fxNodes.push(n);return n;}
+    if(f==='echo'){
+      var d=mk(ctx.createDelay(1)); d.delayTime.value=.28;
+      var fb=mk(ctx.createGain()); fb.gain.value=.4;
+      fxIn.connect(fxOut); fxIn.connect(d); d.connect(fb); fb.connect(d); d.connect(fxOut);
+    }else if(f==='robot'){
+      var g=mk(ctx.createGain()); g.gain.value=0;
+      var o=mk(ctx.createOscillator()); o.type='sine'; o.frequency.value=70; o.connect(g.gain); o.start();
+      fxIn.connect(g); g.connect(fxOut);
+    }else if(f==='deep'||f==='high'){
+      var p=mk(pitch(f==='deep'?.75:1.5)); fxIn.connect(p); p.connect(fxOut);
+    }else{ fxIn.connect(fxOut); }
+  }
+
+  function applyGate(){
+    if(!gate)return;
+    gate.gain.value=(muted||($('ptt').checked&&!talking))?0:1;
+  }
+
+  // ---------- mic + processing graph; returns the processed MediaStream ----------
+  async function openMic(){
+    if(!secure()){throw new Error('This browser has no microphone access. Use Chrome over HTTPS.');}
+    stream=await navigator.mediaDevices.getUserMedia({audio:{
+      echoCancellation:$('ec').checked,noiseSuppression:$('ns').checked,
+      autoGainControl:$('ag').checked,channelCount:1},video:false});
+    var AC=window.AudioContext||window.webkitAudioContext;
+    ctx=new AC({latencyHint:'interactive'});
+    if(ctx.state==='suspended'){await ctx.resume();}
+    src=ctx.createMediaStreamSource(stream);
+    fxIn=ctx.createGain(); fxOut=ctx.createGain(); gate=ctx.createGain(); gain=ctx.createGain();
+    gain.gain.value=$('vol').value/100;
+    var comp=ctx.createDynamicsCompressor();
+    comp.threshold.value=-20; comp.knee.value=20; comp.ratio.value=8;
+    comp.attack.value=0.003; comp.release.value=0.15;
+    analyser=ctx.createAnalyser(); analyser.fftSize=512;
+    src.connect(analyser); src.connect(fxIn);
+    fxOut.connect(gate); gate.connect(gain); gain.connect(comp);
+    var dest=ctx.createMediaStreamDestination(); comp.connect(dest);
+    setFx(); muted=false; talking=false; applyGate();
+    live=true; meter(); showControls();
+    return dest.stream;
+  }
+
+  function showControls(){
+    $('mute').style.display=live&&mode!=='recv'?'block':'none';
+    $('mute').textContent='Mute mic';
+    $('talk').style.display=live&&mode!=='recv'&&$('ptt').checked?'block':'none';
+  }
+
+  function cleanup(){
+    live=false; cancelAnimationFrame(raf);
+    if(stream){stream.getTracks().forEach(function(t){t.stop();});stream=null;}
+    if(pc){try{pc.close();}catch(e){} pc=null;}
+    if(sinkEl){try{sinkEl.pause();}catch(e){} sinkEl.srcObject=null; sinkEl=null;}
+    $('rem').srcObject=null;
+    if(ctx){ctx.close().catch(function(){});ctx=null;}
+    fxNodes=[]; gate=gain=fxIn=fxOut=analyser=null;
+    $('bar').style.width='0'; $('lvl').textContent='–';
+    $('big').textContent='Start'; $('big').classList.remove('live');
+    showControls();
+  }
+
+  function meter(){
+    var buf=new Uint8Array(analyser.fftSize);
+    (function tick(){
+      if(!live||!analyser)return;
+      analyser.getByteTimeDomainData(buf);
+      var peak=0;
+      for(var i=0;i<buf.length;i++){var v=Math.abs(buf[i]-128)/128;if(v>peak)peak=v;}
+      var pct=Math.min(100,Math.round(peak*140));
+      var off=muted||($('ptt').checked&&!talking);
+      $('bar').style.width=off?'0%':pct+'%';
+      $('bar').style.background=pct>85?'var(--accent)':'var(--accent-2)';
+      $('lvl').textContent=muted?'muted':pct+'%';
+      raf=requestAnimationFrame(tick);
+    })();
+  }
+
+  async function loadOutputs(el){
+    try{
+      if(!el||typeof el.setSinkId!=='function')return;
+      var devs=await navigator.mediaDevices.enumerateDevices();
+      var outs=devs.filter(function(d){return d.kind==='audiooutput';});
+      if(outs.length<2)return;
+      $('out').innerHTML='';
+      outs.forEach(function(d,i){
+        var o=document.createElement('option');
+        o.value=d.deviceId;o.textContent=d.label||('Output '+(i+1));$('out').appendChild(o);
+      });
+      $('outrow').classList.remove('hide');
+    }catch(e){}
+  }
+
+  // ---------- local mode ----------
+  async function startLocal(){
+    try{
+      say('Asking for mic…');
+      var s=await openMic();
+      sinkEl=new Audio(); sinkEl.srcObject=s; sinkEl.autoplay=true; await sinkEl.play();
+      $('big').textContent='Stop'; $('big').classList.add('live');
+      say('Live — speak now'); loadOutputs(sinkEl);
+    }catch(e){cleanup();fail(e);}
+  }
+
+  function fail(e){
+    say(e&&e.name==='NotAllowedError'?'Mic permission denied. Allow it in browser settings.':'Error: '+(e&&e.message||e));
+  }
+
+  // ---------- WebRTC (manual code exchange, no server) ----------
+  function newPc(){
+    var p=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+    p.onconnectionstatechange=function(){
+      if(p.connectionState==='connected')say('Connected — audio is flowing');
+      else if(p.connectionState==='failed')say('Connection failed. Try again on the same Wi‑Fi.');
+      else if(p.connectionState==='disconnected')say('Disconnected');
+    };
+    return p;
+  }
+  function gather(p){
+    return new Promise(function(res){
+      if(p.iceGatheringState==='complete')return res();
+      p.onicegatheringstatechange=function(){if(p.iceGatheringState==='complete')res();};
+      setTimeout(res,4000);
+    });
+  }
+  function enc(s){return btoa(s);}
+  function dec(s){return atob(s.replace(/\s/g,''));}
+
+  async function makeOffer(){
+    try{
+      cleanup(); say('Starting mic…');
+      var s=await openMic();
+      pc=newPc();
+      s.getAudioTracks().forEach(function(t){pc.addTrack(t,s);});
+      await pc.setLocalDescription(await pc.createOffer());
+      await gather(pc);
+      $('offer').value=enc(pc.localDescription.sdp);
+      say('Copy the code to the speaker device');
+    }catch(e){cleanup();fail(e);}
+  }
+  async function finish(){
+    try{
+      if(!pc)return say('Make a code first');
+      await pc.setRemoteDescription({type:'answer',sdp:dec($('ansIn').value)});
+      say('Connecting…');
+    }catch(e){say('That reply code is not valid');}
+  }
+  async function makeAnswer(){
+    try{
+      cleanup(); say('Connecting…');
+      pc=newPc();
+      pc.ontrack=function(e){
+        sinkEl=$('rem'); sinkEl.srcObject=e.streams[0]; sinkEl.volume=Math.min(1,$('vol').value/100);
+        sinkEl.play().catch(function(){});
+        loadOutputs(sinkEl);
+      };
+      await pc.setRemoteDescription({type:'offer',sdp:dec($('offIn').value)});
+      await pc.setLocalDescription(await pc.createAnswer());
+      await gather(pc);
+      $('answer').value=enc(pc.localDescription.sdp);
+      say('Copy the reply code back to the mic device');
+    }catch(e){cleanup();say('That code is not valid');}
+  }
+
+  // ---------- UI wiring ----------
+  document.querySelectorAll('.tabs button').forEach(function(b){
+    b.addEventListener('click',function(){
+      cleanup(); say('');
+      mode=b.dataset.m;
+      document.querySelectorAll('.tabs button').forEach(function(x){x.classList.toggle('on',x===b);});
+      $('p-local').classList.toggle('hide',mode!=='local');
+      $('p-send').classList.toggle('hide',mode!=='send');
+      $('p-recv').classList.toggle('hide',mode!=='recv');
+      $('c-meter').classList.toggle('hide',mode==='recv');
+    });
+  });
+  $('big').addEventListener('click',function(){live?(cleanup(),say('Stopped')):startLocal();});
+  $('mkOffer').addEventListener('click',makeOffer);
+  $('fin').addEventListener('click',finish);
+  $('mkAns').addEventListener('click',makeAnswer);
+
+  document.querySelectorAll('[data-copy]').forEach(function(b){
+    b.addEventListener('click',function(){
+      var ta=$(b.dataset.copy); if(!ta.value)return;
+      ta.select();
+      (navigator.clipboard?navigator.clipboard.writeText(ta.value):Promise.reject())
+        .catch(function(){try{document.execCommand('copy');}catch(e){}})
+        .then(function(){say('Copied');});
+    });
+  });
+
+  $('mute').addEventListener('click',function(){
+    muted=!muted; applyGate();
+    $('mute').textContent=muted?'Unmute mic':'Mute mic';
+    say(muted?'Muted':'Live — speak now');
+  });
+
+  $('fx').addEventListener('change',setFx);
+  $('ptt').addEventListener('change',function(){talking=false;applyGate();showControls();});
+  var talk=$('talk');
+  function tk(on){return function(e){e.preventDefault();talking=on;talk.classList.toggle('down',on);
+    talk.textContent=on?'Talking…':'Hold to talk';applyGate();};}
+  talk.addEventListener('pointerdown',tk(true));
+  ['pointerup','pointercancel','pointerleave'].forEach(function(ev){talk.addEventListener(ev,tk(false));});
+  talk.addEventListener('contextmenu',function(e){e.preventDefault();});
+
+  $('vol').addEventListener('input',function(){
+    var v=$('vol').value; $('vv').textContent=v+'%';
+    if(gain)gain.gain.value=v/100;
+    if(mode==='recv')$('rem').volume=Math.min(1,v/100);
+  });
+  $('out').addEventListener('change',function(){
+    if(sinkEl&&sinkEl.setSinkId){sinkEl.setSinkId($('out').value).catch(function(){say('Could not switch output');});}
+  });
+  ['ec','ns','ag'].forEach(function(id){
+    $(id).addEventListener('change',function(){if(live&&mode!=='recv'){cleanup();say('Setting changed — start again');}});
+  });
+  document.addEventListener('visibilitychange',function(){if(ctx&&ctx.state==='suspended'&&live){ctx.resume();}});
+})();
+</script>
+</body>
+</html>
